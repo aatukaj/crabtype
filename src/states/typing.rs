@@ -28,12 +28,17 @@ pub enum TestMode {
     Words(usize),
 }
 impl TypingState {
-    pub fn new(word_list: Vec<String>, mode: TestMode) -> Self {
+    pub fn new(mut word_list: Vec<String>, mode: TestMode) -> Self {
         Self {
             written_words: vec![String::new()],
             start_time: None,
             rows: vec![0],
-            word_list,
+            word_list: if let TestMode::Words(words) = mode {
+                word_list.resize(words, String::new());
+                word_list
+            } else {
+                word_list
+            },
             key_strokes: Vec::new(),
             mode,
         }
@@ -70,6 +75,9 @@ impl State for TypingState {
                 }
                 KeyCode::Char(' ') => {
                     self.written_words.push(String::new());
+                    if self.written_words.len() > self.word_list.len() {
+                        return Box::new(StatsState::new(self.key_strokes, time.elapsed()));
+                    }
                     self.key_strokes
                         .push((time.elapsed(), KeyStrokeKind::Space))
                 }
@@ -107,12 +115,10 @@ impl State for TypingState {
 
         let (ratio, label) = match self.mode {
             TestMode::Duration(d) => (
-                self
-                    .start_time
+                self.start_time
                     .map_or(Duration::ZERO, |t| t.elapsed())
                     .as_secs_f64()
-                    / d.as_secs_f64()
-  ,
+                    / d.as_secs_f64(),
                 self.start_time
                     .map_or("Start Typing to begin.".to_string(), |duration| {
                         format!(
@@ -122,9 +128,10 @@ impl State for TypingState {
                         )
                     }),
             ),
-            TestMode::Words(words) => {
-                ((self.written_words.len() - 1) as f64 / words as f64, format!("{}/{}words", (self.written_words.len() - 1), words))
-            }
+            TestMode::Words(words) => (
+                (self.written_words.len() - 1) as f64 / words as f64,
+                format!("{}/{}", (self.written_words.len() - 1), words),
+            ),
         };
         let ratio = ratio.clamp(0.0, 1.0); // ratio thats not in 0..1.0 causes a panic
         let timer = Gauge::default()
