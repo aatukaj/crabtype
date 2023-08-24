@@ -115,9 +115,7 @@ fn run_app(terminal: &mut Terminal<states::Backend>, mut app: App) -> io::Result
     Ok(())
 }
 
-fn normalize_wpm(char_amount: u32, time: f64) -> f64 {
-    char_amount as f64 / 5.0 * (60.0 / time)
-}
+
 
 fn handle_event(key: event::KeyEvent, _app: &mut App) -> bool {
     if key.kind == KeyEventKind::Press {

@@ -1,4 +1,4 @@
-use std::{os::raw, time::Duration};
+use std::{iter, os::raw, time::Duration};
 
 use crossterm::event;
 use ratatui::{
@@ -20,7 +20,12 @@ pub struct StatsState {
     accuracy: f64,
 }
 impl StatsState {
-    pub fn new(key_strokes: Vec<(Duration, KeyStrokeKind)>, test_duration: Duration) -> Self {
+    pub fn new(
+        key_strokes: Vec<(Duration, KeyStrokeKind)>,
+        test_duration: Duration,
+        inputted_words: &Vec<String>,
+        correct_words: &Vec<String>,
+    ) -> Self {
         let time_step = 0.5;
         let mut raw_stats = (0..=(test_duration.as_secs_f64() / time_step) as u32)
             .map(|i| (i as f64 * time_step, 0.0))
@@ -46,8 +51,8 @@ impl StatsState {
             match key_stroke {
                 KeyStrokeKind::Incorrect(_) => errs += 1.0,
                 KeyStrokeKind::Correct(_) => corrects += 1.0,
-                KeyStrokeKind::Space => spaces += 1.0,
-                _ => ()
+                KeyStrokeKind::Space(_) => spaces += 1.0,
+                _ => (),
             }
         }
         Self {
@@ -166,5 +171,63 @@ impl State for StatsState {
         });
         let list = List::new(t.to_vec());
         f.render_widget(list, layout[0])
+    }
+}
+
+fn normalize_wpm(char_amount: u32, time: f64) -> f64 {
+    char_amount as f64 / 5.0 * (60.0 / time)
+}
+
+
+#[allow(unused)]
+#[derive(PartialEq, Clone, Debug)]
+enum CharDiffKind {
+    Correct,
+    Incorrect,
+    Extra,
+    Missed,
+}
+
+fn word_difference<'a>(
+    correct_word: &'a str,
+    input: &'a str,
+) -> impl Iterator<Item = CharDiffKind> + 'a {
+    let correct_iter = correct_word
+        .chars()
+        .map(Some)
+        .chain(iter::repeat(None).take(input.len().saturating_sub(correct_word.len())));
+    let input_iter = input
+        .chars()
+        .map(Some)
+        .chain(iter::repeat(None).take(correct_word.len().saturating_sub(input.len())));
+
+    correct_iter.zip(input_iter).map(|(c, i)| match (c, i) {
+        (_, None) => CharDiffKind::Missed,
+        (None, _) => CharDiffKind::Extra,
+        (Some(c), Some(i)) => {
+            if i == c {
+                CharDiffKind::Correct
+            } else {
+                CharDiffKind::Incorrect
+            }
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_word_dif_extra() {
+        use CharDiffKind::*;
+        assert!(word_difference("aabbc", "ahhbcaa")
+            .eq([Correct, Incorrect, Incorrect, Correct, Correct, Extra, Extra]))
+    }
+    #[test]
+    fn test_word_dif_missed() {
+        use CharDiffKind::*;
+        assert!(
+            word_difference("bbbdas", "bbb").eq([Correct, Correct, Correct, Missed, Missed, Missed])
+        )
     }
 }

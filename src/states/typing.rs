@@ -20,7 +20,8 @@ pub struct TypingState {
 pub enum KeyStrokeKind {
     Correct(char),
     Incorrect(char),
-    Space,
+    ///amount of extra letters in the word before, when n < 0, skipped letters
+    Space(i32), 
     Remove,
 }
 pub enum TestMode {
@@ -76,10 +77,16 @@ impl State for TypingState {
                 KeyCode::Char(' ') => {
                     self.written_words.push(String::new());
                     if self.written_words.len() > self.word_list.len() {
-                        return Box::new(StatsState::new(self.key_strokes, time.elapsed()));
+                        return Box::new(StatsState::new(
+                            self.key_strokes,
+                            time.elapsed(),
+                            &self.word_list,
+                            &self.written_words,
+                        ));
                     }
+                    let i = self.written_words.len() - 1;
                     self.key_strokes
-                        .push((time.elapsed(), KeyStrokeKind::Space))
+                        .push((time.elapsed(), KeyStrokeKind::Space(self.written_words[i].len() as i32 - self.word_list[i].len() as i32)))
                 }
                 KeyCode::Backspace => {
                     let last = self.written_words.last().unwrap();
@@ -100,7 +107,12 @@ impl State for TypingState {
     fn update(self: Box<Self>, _app: &mut App) -> Box<dyn State> {
         if let TestMode::Duration(d) = self.mode {
             if self.start_time.is_some_and(|t| t.elapsed() > d) {
-                return Box::new(StatsState::new(self.key_strokes, d));
+                return Box::new(StatsState::new(
+                    self.key_strokes,
+                    d,
+                    &self.word_list,
+                    &self.written_words,
+                ));
             }
         }
 
