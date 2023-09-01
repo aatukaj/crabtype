@@ -10,6 +10,7 @@ pub trait State {
     fn update(self: Box<Self>, app: &mut App) -> Box<dyn State>;
     fn render(&mut self, f: &mut Frame<Backend>, app: &mut App);
 }
+
 pub type Backend = CrosstermBackend<Stdout>;
 mod typing;
 pub use typing::*;

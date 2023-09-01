@@ -58,7 +58,7 @@ impl State for TypingState {
                 }
             };
             match event.code {
-                KeyCode::Char(c @ ('a'..='z' | 'A'..='Z')) => {
+                KeyCode::Char(c @ ('!'..='~' /* range of the reasonable characters, https://www.asciitable.com/ */)) => {
                     if let Some(s) = self.written_words.last_mut() {
                         s.push(c);
                         let len = s.len();
@@ -76,6 +76,13 @@ impl State for TypingState {
                     }
                 }
                 KeyCode::Char(' ') => {
+                    let i = self.written_words.len() - 1;
+                    self.key_strokes.push((
+                        time.elapsed(),
+                        KeyStrokeKind::Space(
+                            self.written_words[i].len() as i32 - self.word_list[i].len() as i32,
+                        ),
+                    ));
                     self.written_words.push(String::new());
                     if self.written_words.len() > self.word_list.len() {
                         return Box::new(StatsState::new(
@@ -85,17 +92,11 @@ impl State for TypingState {
                             &self.written_words,
                         ));
                     }
-                    let i = self.written_words.len() - 1;
-                    self.key_strokes.push((
-                        time.elapsed(),
-                        KeyStrokeKind::Space(
-                            self.written_words[i].len() as i32 - self.word_list[i].len() as i32,
-                        ),
-                    ))
+                    
                 }
                 KeyCode::Backspace => {
-                    let last = self.written_words.last().unwrap();
-                    if last.is_empty() {
+                    let Some(last) = self.written_words.last() else {return self; };
+                    if last.is_empty() && self.written_words.len() > 1 {
                         self.written_words.pop();
                     } else {
                         self.written_words.last_mut().unwrap().pop();

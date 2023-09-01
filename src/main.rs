@@ -39,11 +39,6 @@ struct Mode {
 #[allow(unused)]
 struct WordList {
     name: String,
-
-    #[serde(rename = "noLazyMode")]
-    no_lazy_mode: bool,
-    #[serde(rename = "orderedByFrequency")]
-    ordered_by_frequency: bool,
     words: Vec<String>,
 }
 pub struct App {

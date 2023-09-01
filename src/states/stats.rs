@@ -97,23 +97,35 @@ impl StatsState {
                 .iter()
                 .filter_map(|t| (t.2 != 0.0).then_some((t.0, normalize_wpm(t.2, time_step))))
                 .collect_vec(),
+            accuracy:calculate_accuracy(&key_strokes),
             key_strokes,
-            accuracy: 0.0,
             test_duration,
             final_stats: FinalStats::calculate(inputted_words, correct_words, test_duration)
         }
     }
-}
 
+    fn render_stats(&self, f: &mut Frame<'_, CrosstermBackend<std::io::Stdout>>, area: Rect) {
+        let stats = [
+            ("wpm", format!("{:.0}", self.final_stats.wpm)),
+            ("raw", format!("{:.0}", self.final_stats.raw_wpm)),
+            ("acc", format!("{:.0}%", self.accuracy * 100.0)),
+            ("chars", format!("correct:   {}\nincorrect: {}\nextra:     {}\nmissed:    {}", self.final_stats.correct, self.final_stats.incorrect, self.final_stats.extra, self.final_stats.missed)),
+        ];
+        let t = stats.map(|(name, value)| {
+            ListItem::new({
+                let mut it = vec![Line::from(Span::styled(name.to_string(), Style::default().yellow()))];
+                for row in value.split('\n') {
+                    it.push(Line::from(Span::raw(row.to_string())))
+                }
+                it.push(Line::from(""));
+                it
+            })
+        });
+        let list = List::new(t.to_vec());
+        f.render_widget(list, area)
+    }
 
-impl State for StatsState {
-    fn handle_event(self: Box<Self>, _event: event::KeyEvent, _app: &mut App) -> Box<dyn State> {
-        self
-    }
-    fn update(self: Box<Self>, _app: &mut App) -> Box<dyn State> {
-        self
-    }
-    fn render(&mut self, f: &mut Frame<Backend>, _app: &mut App) {
+    fn render_chart(&mut self, f: &mut Frame<'_, CrosstermBackend<std::io::Stdout>>, area: Rect) {
         let max_wpm = (self
             .raw_wpms
             .iter()
@@ -123,10 +135,7 @@ impl State for StatsState {
             / 40
             + 1)
             * 40;
-        let layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(vec![Constraint::Max(17), Constraint::Min(0)])
-            .split(f.size());
+        
         let last_time = self.test_duration.as_secs_f64();
 
         let chart = Chart::new(vec![
@@ -164,25 +173,25 @@ impl State for StatsState {
                         .collect(),
                 ),
         );
-        f.render_widget(chart, layout[1]);
-        let stats = [
-            ("wpm", format!("{:.0}", self.final_stats.wpm)),
-            ("raw", format!("{:.0}", self.final_stats.raw_wpm)),
-            ("acc", format!("{:.0}%", self.accuracy * 100.0)),
-            ("chars", format!("correct:   {}\nincorrect: {}\nextra:     {}\nmissed:    {}", self.final_stats.correct, self.final_stats.incorrect, self.final_stats.extra, self.final_stats.missed)),
-        ];
-        let t = stats.map(|(name, value)| {
-            ListItem::new({
-                let mut it = vec![Line::from(Span::styled(name.to_string(), Style::default().yellow()))];
-                for row in value.split('\n') {
-                    it.push(Line::from(Span::raw(row.to_string())))
-                }
-                it.push(Line::from(""));
-                it
-            })
-        });
-        let list = List::new(t.to_vec());
-        f.render_widget(list, layout[0])
+        f.render_widget(chart, area);
+    }
+}
+
+
+impl State for StatsState {
+    fn handle_event(self: Box<Self>, _event: event::KeyEvent, _app: &mut App) -> Box<dyn State> {
+        self
+    }
+    fn update(self: Box<Self>, _app: &mut App) -> Box<dyn State> {
+        self
+    }
+    fn render(&mut self, f: &mut Frame<Backend>, _app: &mut App) {
+        let layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Max(17), Constraint::Min(0)])
+            .split(f.size());
+        self.render_chart(f, layout[1]);
+        self.render_stats(f, layout[0]);
     }
 }
 
@@ -218,6 +227,23 @@ pub fn word_difference<'a>(
             }
         })
 }
+
+fn calculate_accuracy(
+    key_strokes: &[(Duration, KeyStrokeKind)]
+) -> f64 {
+    let mut correct = 0.0;
+    let mut incorrect = 0.0;
+    for (_, ks) in key_strokes.iter() {
+        match ks {
+            KeyStrokeKind::Correct(_) => correct+=1.0,
+            KeyStrokeKind::Incorrect(_) => incorrect+=1.0,
+            KeyStrokeKind::Space(i) if i != &0 => incorrect+=1.0,
+            _ => ()
+        }
+    }
+    correct/(correct+incorrect)
+}
+
 //kinda breaks when the duration is 0 but that rarely (never) happens so its ok :)
 fn batch_key_strokes(
     key_strokes: &[(Duration, KeyStrokeKind)],
