@@ -25,3 +25,8 @@ crabtype --words [word_amount]
 crabtype --duration [seconds]
 ```
 Note that you can only use one of these at once.
+
+
+
+
+![image](https://github.com/aatukaj/crabtype/assets/60185743/5e4d4856-7a58-4ead-9d11-8964eef05806)
