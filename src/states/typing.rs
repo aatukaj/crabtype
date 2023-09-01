@@ -21,9 +21,10 @@ pub enum KeyStrokeKind {
     Correct(char),
     Incorrect(char),
     ///amount of extra letters in the word before, when n < 0, skipped letters
-    Space(i32), 
+    Space(i32),
     Remove,
 }
+
 pub enum TestMode {
     Duration(Duration),
     Words(usize),
@@ -85,8 +86,12 @@ impl State for TypingState {
                         ));
                     }
                     let i = self.written_words.len() - 1;
-                    self.key_strokes
-                        .push((time.elapsed(), KeyStrokeKind::Space(self.written_words[i].len() as i32 - self.word_list[i].len() as i32)))
+                    self.key_strokes.push((
+                        time.elapsed(),
+                        KeyStrokeKind::Space(
+                            self.written_words[i].len() as i32 - self.word_list[i].len() as i32,
+                        ),
+                    ))
                 }
                 KeyCode::Backspace => {
                     let last = self.written_words.last().unwrap();
@@ -142,7 +147,11 @@ impl State for TypingState {
             ),
             TestMode::Words(words) => (
                 (self.written_words.len() - 1) as f64 / words as f64,
-                format!("{}/{}", (self.written_words.len() - 1), words),
+                if self.start_time.is_none() {
+                    "Start Typing to begin.".to_string()
+                } else {
+                    format!("{}/{}", (self.written_words.len() - 1), words)
+                },
             ),
         };
         let ratio = ratio.clamp(0.0, 1.0); // ratio thats not in 0..1.0 causes a panic

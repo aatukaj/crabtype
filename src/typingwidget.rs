@@ -2,7 +2,7 @@ use std::{iter, borrow::Cow};
 
 use ratatui::{prelude::*, widgets::StatefulWidget};
 
-use crate::states;
+use crate::states::{self, word_difference, CharDiffKind};
 
 pub struct TypingWidget {
     style_correct: Style,
@@ -39,10 +39,7 @@ impl TypingWidget {
                 self.style_correct,
             )
         } else {
-            for ((i, input_char), correct_char) in input
-                .char_indices()
-                .zip(word.chars().map(Some).chain(iter::repeat(None)))
-            {
+            for (i, dif) in word_difference(word, input).enumerate() {
                 buf.set_style(
                     Rect {
                         x: area.x + x + i as u16,
@@ -50,10 +47,11 @@ impl TypingWidget {
                         width: 1,
                         height: 1,
                     },
-                    match correct_char.is_some_and(|char| char == input_char) {
-                        false => self.style_error,
-                        true => self.style_correct,
-                    },
+                    match dif {
+                        CharDiffKind::Correct => self.style_correct,
+                        CharDiffKind::Incorrect | CharDiffKind::Extra => self.style_error,
+                        CharDiffKind::Missed => Style::default().underlined()
+                    }
                 )
             }
         }
