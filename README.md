@@ -1,5 +1,8 @@
 # crabtype
 
+![image](https://github.com/aatukaj/crabtype/assets/60185743/5e4d4856-7a58-4ead-9d11-8964eef05806)
+
+
 
 A simplistic typing test in the terminal.
 
@@ -29,4 +32,3 @@ Note that you can only use one of these at once.
 
 
 
-![image](https://github.com/aatukaj/crabtype/assets/60185743/5e4d4856-7a58-4ead-9d11-8964eef05806)
