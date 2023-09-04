@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use crossterm::event::{self, KeyCode, KeyEventKind};
+use crossterm::event::{self, KeyCode, KeyEventKind, KeyModifiers};
 
 use crate::{typingwidget::TypingWidget, App};
 
@@ -22,7 +22,6 @@ pub enum KeyStrokeKind {
     Incorrect(char),
     ///amount of extra letters in the word before, when n < 0, skipped letters
     Space(i32),
-    Remove,
 }
 
 pub enum TestMode {
@@ -45,10 +44,54 @@ impl TypingState {
             mode,
         }
     }
+
+    fn remove_char(&mut self) {
+        let Some(last) = self.written_words.last() else {
+            return;
+        };
+        if last.is_empty() && self.written_words.len() > 1 {
+            self.written_words.pop();
+        } else {
+            self.written_words.last_mut().unwrap().pop();
+        }
+    }
+
+    fn add_char(&mut self, c: char, time: Instant) {
+        if let Some(s) = self.written_words.last_mut() {
+            s.push(c);
+            let len = s.len();
+            self.key_strokes.push((
+                time.elapsed(),
+                match self.word_list[self.written_words.len() - 1]
+                    .chars()
+                    .nth(len - 1)
+                    .is_some_and(|val| val == c)
+                {
+                    true => KeyStrokeKind::Correct(c),
+                    false => KeyStrokeKind::Incorrect(c),
+                },
+            ))
+        }
+    }
+    fn remove_word(&mut self) {
+        self.written_words.last_mut().unwrap().clear()
+
+    }
+    fn add_space(&mut self, time: Instant) {
+        let i = self.written_words.len() - 1;
+        self.key_strokes.push((
+            time.elapsed(),
+            KeyStrokeKind::Space(
+                self.written_words[i].len() as i32 - self.word_list[i].len() as i32,
+            ),
+        ));
+        self.written_words.push(String::new());
+    }
 }
 impl State for TypingState {
-    fn handle_event(mut self: Box<Self>, event: event::KeyEvent, _app: &mut App) -> Box<dyn State> {
+    fn handle_event(mut self: Box<Self>, event: event::KeyEvent, _app: &App) -> Box<dyn State> {
         if event.kind == KeyEventKind::Press {
+            // start counting the time on the first event
             let time = match self.start_time {
                 Some(time) => time,
                 None => {
@@ -58,73 +101,43 @@ impl State for TypingState {
                 }
             };
             match event.code {
-                KeyCode::Char(c @ ('!'..='~' /* range of the reasonable characters, https://www.asciitable.com/ */)) => {
-                    if let Some(s) = self.written_words.last_mut() {
-                        s.push(c);
-                        let len = s.len();
-                        self.key_strokes.push((
-                            time.elapsed(),
-                            match self.word_list[self.written_words.len() - 1]
-                                .chars()
-                                .nth(len - 1)
-                                .is_some_and(|val| val == c)
-                            {
-                                true => KeyStrokeKind::Correct(c),
-                                false => KeyStrokeKind::Incorrect(c),
-                            },
-                        ))
-                    }
-                }
-                KeyCode::Char(' ') => {
-                    let i = self.written_words.len() - 1;
-                    self.key_strokes.push((
-                        time.elapsed(),
-                        KeyStrokeKind::Space(
-                            self.written_words[i].len() as i32 - self.word_list[i].len() as i32,
-                        ),
-                    ));
-                    self.written_words.push(String::new());
-                    if self.written_words.len() > self.word_list.len() {
+                KeyCode::Char('w') | KeyCode::Backspace if event.modifiers.contains(KeyModifiers::CONTROL)  => {self.remove_word()},
+                KeyCode::Char(c @ ('!'..='~' /* https://www.asciitable.com/ */)) => self.add_char(c, time),
+                KeyCode::Char(' ') => self.add_space(time),
+                KeyCode::Backspace => self.remove_char(),
+                _ => (),
+            };
+        }
+        self
+    }
+    fn update(self: Box<Self>, _app: &App) -> Box<dyn State> {
+        if let Some(start_time) = self.start_time {
+            match self.mode {
+                TestMode::Duration(dur) => {
+                    if start_time.elapsed() > dur {
                         return Box::new(StatsState::new(
                             self.key_strokes,
-                            time.elapsed(),
+                            dur,
                             &self.word_list,
                             &self.written_words,
                         ));
                     }
-                    
                 }
-                KeyCode::Backspace => {
-                    let Some(last) = self.written_words.last() else {return self; };
-                    if last.is_empty() && self.written_words.len() > 1 {
-                        self.written_words.pop();
-                    } else {
-                        self.written_words.last_mut().unwrap().pop();
+                TestMode::Words(words) => {
+                    if self.written_words.len() > words {
+                        return Box::new(StatsState::new(
+                            self.key_strokes,
+                            start_time.elapsed(),
+                            &self.word_list,
+                            &self.written_words,
+                        ));
                     }
-                    self.key_strokes
-                        .push((time.elapsed(), KeyStrokeKind::Remove));
                 }
-                _ => (),
-            };
-        }
-
-        self
-    }
-    fn update(self: Box<Self>, _app: &mut App) -> Box<dyn State> {
-        if let TestMode::Duration(d) = self.mode {
-            if self.start_time.is_some_and(|t| t.elapsed() > d) {
-                return Box::new(StatsState::new(
-                    self.key_strokes,
-                    d,
-                    &self.word_list,
-                    &self.written_words,
-                ));
             }
         }
-
         self
     }
-    fn render(&mut self, f: &mut ratatui::Frame<Backend>, _app: &mut App) {
+    fn render(&mut self, f: &mut ratatui::Frame<Backend>, _app: &App) {
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints(vec![Constraint::Max(1), Constraint::Min(0)])

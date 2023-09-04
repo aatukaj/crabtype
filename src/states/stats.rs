@@ -179,13 +179,13 @@ impl StatsState {
 
 
 impl State for StatsState {
-    fn handle_event(self: Box<Self>, _event: event::KeyEvent, _app: &mut App) -> Box<dyn State> {
+    fn handle_event(self: Box<Self>, _event: event::KeyEvent, _app: &App) -> Box<dyn State> {
         self
     }
-    fn update(self: Box<Self>, _app: &mut App) -> Box<dyn State> {
+    fn update(self: Box<Self>, _app: &App) -> Box<dyn State> {
         self
     }
-    fn render(&mut self, f: &mut Frame<Backend>, _app: &mut App) {
+    fn render(&mut self, f: &mut Frame<Backend>, _app: &App) {
         let layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(vec![Constraint::Max(17), Constraint::Min(0)])
@@ -257,7 +257,6 @@ fn batch_key_strokes(
     {
         let (chars, errors) = group.fold((0.0, 0.0), |mut acc, (_, ks)| {
             match ks {
-                KeyStrokeKind::Remove => (),
                 KeyStrokeKind::Incorrect(_) => {
                     acc.1 += 1.0;
                     acc.0 += 1.0

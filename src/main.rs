@@ -2,7 +2,7 @@ use std::{io, time::Duration};
 
 use anyhow::Result;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -42,7 +42,6 @@ struct WordList {
     words: Vec<String>,
 }
 pub struct App {
-
     word_list: WordList,
     state: Option<Box<dyn State>>,
 }
@@ -116,6 +115,7 @@ fn handle_event(key: event::KeyEvent, _app: &mut App) -> bool {
     if key.kind == KeyEventKind::Press {
         match key.code {
             KeyCode::Esc => return true,
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => return true,
             _ => (),
         }
     }
