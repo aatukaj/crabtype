@@ -49,7 +49,8 @@ impl TypingWidget {
                     },
                     match dif {
                         CharDiffKind::Correct => self.style_correct,
-                        CharDiffKind::Incorrect | CharDiffKind::Extra => self.style_error,
+                        CharDiffKind::Incorrect => self.style_error,
+                        CharDiffKind::Extra => self.style_error.underlined(),
                         CharDiffKind::Missed => Style::default().underlined()
                     }
                 )

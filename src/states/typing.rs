@@ -45,14 +45,35 @@ impl TypingState {
         }
     }
 
+    fn remove_empty(&mut self) {
+        if self.written_words.len() > 1 {
+            if self.written_words[self.written_words.len() - 2]
+                != self.word_list[self.written_words.len() - 2]
+            {
+                self.written_words.pop();
+            }
+        }
+    }
+
     fn remove_char(&mut self) {
-        let Some(last) = self.written_words.last() else {
+        let Some(last) = self.written_words.last_mut() else {
             return;
         };
-        if last.is_empty() && self.written_words.len() > 1 {
-            self.written_words.pop();
+        if last.is_empty() {
+            self.remove_empty()
         } else {
-            self.written_words.last_mut().unwrap().pop();
+            last.pop();
+        }
+    }
+    fn remove_word(&mut self) {
+        let Some(last) = self.written_words.last_mut() else {
+            return;
+        };
+        if last.is_empty() {
+            self.remove_empty();
+            self.written_words.last_mut().unwrap().clear();
+        } else {
+            last.clear();
         }
     }
 
@@ -73,10 +94,7 @@ impl TypingState {
             ))
         }
     }
-    fn remove_word(&mut self) {
-        self.written_words.last_mut().unwrap().clear()
 
-    }
     fn add_space(&mut self, time: Instant) {
         let i = self.written_words.len() - 1;
         self.key_strokes.push((
@@ -92,14 +110,7 @@ impl State for TypingState {
     fn handle_event(mut self: Box<Self>, event: event::KeyEvent, _app: &App) -> Box<dyn State> {
         if event.kind == KeyEventKind::Press {
             // start counting the time on the first event
-            let time = match self.start_time {
-                Some(time) => time,
-                None => {
-                    let time = Instant::now();
-                    self.start_time = Some(time);
-                    time
-                }
-            };
+            let time = *self.start_time.get_or_insert_with(|| Instant::now());
             match event.code {
                 KeyCode::Char('w') | KeyCode::Backspace if event.modifiers.contains(KeyModifiers::CONTROL)  => {self.remove_word()},
                 KeyCode::Char(c @ ('!'..='~' /* https://www.asciitable.com/ */)) => self.add_char(c, time),

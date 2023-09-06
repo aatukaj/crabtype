@@ -155,6 +155,7 @@ dependencies = [
  "ratatui",
  "serde",
  "serde_json",
+ "strum",
 ]
 
 [[package]]

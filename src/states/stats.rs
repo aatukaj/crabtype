@@ -104,7 +104,7 @@ impl StatsState {
         }
     }
 
-    fn render_stats(&self, f: &mut Frame<'_, CrosstermBackend<std::io::Stdout>>, area: Rect) {
+    fn render_stats(&self, f: &mut Frame<'_, Backend>, area: Rect) {
         let stats = [
             ("wpm", format!("{:.0}", self.final_stats.wpm)),
             ("raw", format!("{:.0}", self.final_stats.raw_wpm)),
@@ -125,7 +125,7 @@ impl StatsState {
         f.render_widget(list, area)
     }
 
-    fn render_chart(&mut self, f: &mut Frame<'_, CrosstermBackend<std::io::Stdout>>, area: Rect) {
+    fn render_chart(&mut self, f: &mut Frame<'_, Backend>, area: Rect) {
         let max_wpm = (self
             .raw_wpms
             .iter()
@@ -355,7 +355,7 @@ mod tests {
             &input,
             &correct,
             Duration::from_secs(
-                12, /* 12 to make char amount match wpm due to how normalize_wpm() works : x/5 * (60/12) = x  */
+                12,
             ),
         );
         assert_eq!(stats, FinalStats {
