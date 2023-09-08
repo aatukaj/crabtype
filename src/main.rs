@@ -1,4 +1,4 @@
-use std::{fs, io, time::Duration};
+use std::{fs, io, time::Duration, path::Path, borrow::Cow};
 
 use anyhow::Result;
 use crossterm::{
@@ -6,7 +6,7 @@ use crossterm::{
         self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
     },
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}, style::ContentStyle,
 };
 use rand::{distributions::uniform::SampleRange, seq::SliceRandom};
 use ratatui::prelude::*;
@@ -27,8 +27,8 @@ use rand::prelude::*;
 struct Cli {
     #[command(flatten)]
     mode: Mode,
-    #[arg(long, default_value_t={"english_1k".to_string()})]
-    words_file: String,
+    #[arg(long)]
+    words_file: Option<String>,
     #[arg(short, long)]
     punctuate: bool,
     #[arg(long, short)]
@@ -127,29 +127,27 @@ fn punctuate<R: Rng, S: SampleRange<usize> + Clone>(
 }
 
 fn main() -> Result<()> {
-    let args: Cli = Cli::parse();
+    
 
     // setup terminal
-
-
-
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let contents = fs::read_to_string(format!("./words/{}.json", args.words_file))?;
+    let args: Cli = Cli::parse();
+
+    let contents: Cow<'_, str> = match args.words_file {
+        Some(path) =>  {let c = fs::read_to_string(Path::new(&path))?; c.into()},
+        None => include_str!("../words/english_1k.json").into(),
+    };
+
     let mut word_list = serde_json::from_str::<WordList>(&contents)?;
 
-
     let seed = args.seed.unwrap_or(thread_rng().gen());
-
     let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
-    
-
     word_list.words.shuffle(&mut rng);
-
     if args.punctuate {
         word_list.words = punctuate(word_list.words, 2..=4, &mut rng);
     }
