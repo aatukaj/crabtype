@@ -8,7 +8,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use rand::seq::SliceRandom;
+use rand::{distributions::uniform::SampleRange, seq::SliceRandom};
 use ratatui::prelude::*;
 use serde::Deserialize;
 use strum::IntoEnumIterator;
@@ -22,7 +22,6 @@ use clap::Parser;
 
 use rand::prelude::*;
 
-
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
@@ -30,6 +29,10 @@ struct Cli {
     mode: Mode,
     #[arg(long, default_value_t={"english_1k".to_string()})]
     words_file: String,
+    #[arg(short, long)]
+    punctuate: bool,
+    #[arg(long, short)]
+    seed: Option<u64>,
 }
 
 #[derive(Args, Debug)]
@@ -51,7 +54,6 @@ pub struct App {
     state: Option<Box<dyn State>>,
 }
 
-
 #[derive(EnumIter, Clone, Copy, PartialEq)]
 enum PunctuationKind {
     Period,
@@ -63,7 +65,6 @@ enum PunctuationKind {
     Colon,
     DQuotes,
     Quotes,
-
 }
 impl Into<char> for PunctuationKind {
     fn into(self) -> char {
@@ -77,56 +78,82 @@ impl Into<char> for PunctuationKind {
             Semicolon => ';',
             Colon => ':',
             DQuotes => '"',
-            Quotes => '\''
+            Quotes => '\'',
         }
     }
 }
-use PunctuationKind as PK;
 use strum::EnumIter;
+use PunctuationKind as PK;
+
+fn punctuate<R: Rng, S: SampleRange<usize> + Clone>(
+    words: Vec<String>,
+    jump_range: S,
+    rand: &mut R,
+) -> Vec<String> {
+    let mut capitalize_next = true;
+    let mut new_words = Vec::new();
+
+    let punctuations: Vec<PK> = PK::iter().collect();
+    let weights = [3, 2, 2, 2, 2, 1, 2, 2, 2];
+    debug_assert_eq!(punctuations.len(), weights.len());
+
+    let dist = rand::distributions::WeightedIndex::new(weights).unwrap();
+
+    let mut next_index = rand.gen_range(jump_range.clone());
+
+    for (i, mut word) in words.into_iter().enumerate() {
+        if capitalize_next {
+            capitalize_next = false;
+            word[0..1].make_ascii_uppercase();
+        }
+        if i == next_index {
+            next_index += rand.gen_range(jump_range.clone());
+            let pk = punctuations[dist.sample(rand)];
+            let c: char = pk.into();
+            match pk {
+                PK::Exclamation | PK::Period => {
+                    capitalize_next = true;
+                    word.push(c)
+                }
+                PK::DQuotes | PK::Quotes => word = format!("{c}{word}{c}"),
+                PK::Parantheses => word = format!("({word})"),
+                PK::Hyphen => new_words.push(c.into()),
+                _ => word.push(c),
+            }
+        }
+        new_words.push(word);
+    }
+    new_words
+}
 
 fn main() -> Result<()> {
     let args: Cli = Cli::parse();
 
     // setup terminal
+
+
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-
-
     let contents = fs::read_to_string(format!("./words/{}.json", args.words_file))?;
     let mut word_list = serde_json::from_str::<WordList>(&contents)?;
 
-    let punctuations: Vec<PK> = PK::iter().collect();
-    let weights = [3, 2, 2, 2, 2, 1, 2, 2, 2];
-    debug_assert_eq!(punctuations.len(), weights.len());
-    word_list.words.shuffle(&mut rand::thread_rng());
-    let dist = rand::distributions::WeightedIndex::new(weights).unwrap();
 
-    println!("{:?}", dist.sample(&mut rand::thread_rng()));
-    let words = &mut word_list.words;
-    let mut i = 1;
-    while i < words.len() {
-        let pk = punctuations[dist.sample(&mut rand::thread_rng())];
-        let c: char = pk.into();
-        if pk == PK::Hyphen {
-            words.insert(i, String::from("-"))
-        } else {
-            words[i].push(c);
-        }
-        
-        match pk {
-            PK::Exclamation | PK::Period => words[i+1][0..1].make_ascii_uppercase(),
-            PK::DQuotes | PK::Quotes => words[i].insert(0, c),
-            PK::Parantheses => words[i].insert(0, '('),
-            _ => (),
-        }
-        i+=2;
-    }
+    let seed = args.seed.unwrap_or(thread_rng().gen());
+
+    let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
     
 
+    word_list.words.shuffle(&mut rng);
+
+    if args.punctuate {
+        word_list.words = punctuate(word_list.words, 2..=4, &mut rng);
+    }
+    
 
     let mode = match args.mode {
         Mode {
@@ -138,8 +165,6 @@ fn main() -> Result<()> {
         } => TestMode::Duration(Duration::from_secs(duration)),
         _ => TestMode::Duration(Duration::from_secs(30)),
     };
-
-    
 
     let app = App {
         state: Some(Box::new(TypingState::new(word_list.words.clone(), mode))),
@@ -160,7 +185,8 @@ fn main() -> Result<()> {
     if let Err(err) = res {
         println!("{err:?}");
     }
-
+    println!("seed:");
+    println!("{}", seed);
     Ok(())
 }
 
