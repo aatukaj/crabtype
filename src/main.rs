@@ -1,4 +1,4 @@
-use std::{fs, io, time::Duration, path::Path, borrow::Cow};
+use std::{borrow::Cow, fs, io, path::Path, time::Duration};
 
 use anyhow::Result;
 use crossterm::{
@@ -6,7 +6,8 @@ use crossterm::{
         self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
     },
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}, style::ContentStyle,
+    style::ContentStyle,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use rand::{distributions::uniform::SampleRange, seq::SliceRandom};
 use ratatui::prelude::*;
@@ -54,6 +55,7 @@ pub struct App {
     state: Option<Box<dyn State>>,
 }
 
+use strum::EnumIter;
 #[derive(EnumIter, Clone, Copy, PartialEq)]
 enum PunctuationKind {
     Period,
@@ -82,14 +84,13 @@ impl Into<char> for PunctuationKind {
         }
     }
 }
-use strum::EnumIter;
-use PunctuationKind as PK;
 
 fn punctuate<R: Rng, S: SampleRange<usize> + Clone>(
     words: Vec<String>,
     jump_range: S,
     rand: &mut R,
 ) -> Vec<String> {
+    use PunctuationKind as PK;
     let mut capitalize_next = true;
     let mut new_words = Vec::new();
 
@@ -127,19 +128,20 @@ fn punctuate<R: Rng, S: SampleRange<usize> + Clone>(
 }
 
 fn main() -> Result<()> {
-    
-
+    let args: Cli = Cli::parse();
     // setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-
-    let args: Cli = Cli::parse();
+    
 
     let contents: Cow<'_, str> = match args.words_file {
-        Some(path) =>  {let c = fs::read_to_string(Path::new(&path))?; c.into()},
+        Some(path) => {
+            let c = fs::read_to_string(Path::new(&path))?;
+            c.into()
+        }
         None => include_str!("../words/english_1k.json").into(),
     };
 
@@ -151,7 +153,6 @@ fn main() -> Result<()> {
     if args.punctuate {
         word_list.words = punctuate(word_list.words, 2..=4, &mut rng);
     }
-    
 
     let mode = match args.mode {
         Mode {

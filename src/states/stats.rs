@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::App;
 
-use super::{Backend, KeyStrokeKind, State};
+use super::{Backend, KeyStrokeKind, State, TestMode};
 
 use itertools::{EitherOrBoth, Itertools};
 
@@ -16,10 +16,10 @@ pub struct StatsState {
     raw_wpms: Vec<(f64, f64)>,
     //correct_wpms: Vec<(f64, f64)>,
     errors_wpms: Vec<(f64, f64)>,
-    key_strokes: Vec<(Duration, KeyStrokeKind)>,
     accuracy: f64,
     test_duration: Duration,
     final_stats: FinalStats,
+    mode: TestMode,
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -58,12 +58,22 @@ impl FinalStats {
             .fold(Self::default(), |mut acc, (i, (input, correct))| {
                 if input == correct {
                     acc.wpm += input.len() as f64 + 1.0
-                } else if i == inputted_words.len() - 1 && input.len() <= correct.len() && input == &correct[0..input.len()] {
+                } else if i == inputted_words.len() - 1
+                    && input.len() <= correct.len()
+                    && input == &correct[0..input.len()]
+                {
                     acc.wpm += input.len() as f64;
                     acc.raw_wpm -= 1.0;
                 }
                 acc.raw_wpm += input.len() as f64 + 1.0;
-                for d in word_difference(if i != inputted_words.len() - 1{&correct} else {&correct[0..input.len().min(correct.len())]}, &input) {
+                for d in word_difference(
+                    if i != inputted_words.len() - 1 {
+                        &correct
+                    } else {
+                        &correct[0..input.len().min(correct.len())]
+                    },
+                    &input,
+                ) {
                     match d {
                         CharDiffKind::Correct => acc.correct += 1,
                         CharDiffKind::Incorrect => acc.incorrect += 1,
@@ -84,6 +94,7 @@ impl StatsState {
         test_duration: Duration,
         inputted_words: &[String],
         correct_words: &[String],
+        mode: TestMode,
     ) -> Self {
         let time_step = (test_duration.as_secs_f64() / 20.0).max(0.5);
         let batched_ks = batch_key_strokes(&key_strokes, time_step);
@@ -97,23 +108,39 @@ impl StatsState {
                 .iter()
                 .filter_map(|t| (t.2 != 0.0).then_some((t.0, normalize_wpm(t.2, time_step))))
                 .collect_vec(),
-            accuracy:calculate_accuracy(&key_strokes),
-            key_strokes,
+            accuracy: calculate_accuracy(&key_strokes),
             test_duration,
-            final_stats: FinalStats::calculate(inputted_words, correct_words, test_duration)
+            final_stats: FinalStats::calculate(inputted_words, correct_words, test_duration),
+            mode,
         }
     }
 
     fn render_stats(&self, f: &mut Frame<'_, Backend>, area: Rect) {
-        let stats = [
+        let stats = [           
+            match self.mode {
+                TestMode::Duration(s) => ("mode", format!("duration: {}s", s.as_secs())),
+                TestMode::Words(w) => ("mode", format!("words: {w}")),
+            },
             ("wpm", format!("{:.0}", self.final_stats.wpm)),
             ("raw", format!("{:.0}", self.final_stats.raw_wpm)),
             ("acc", format!("{:.0}%", self.accuracy * 100.0)),
-            ("chars", format!("correct:   {}\nincorrect: {}\nextra:     {}\nmissed:    {}", self.final_stats.correct, self.final_stats.incorrect, self.final_stats.extra, self.final_stats.missed)),
+            (
+                "chars",
+                format!(
+                    "correct:   {}\nincorrect: {}\nextra:     {}\nmissed:    {}",
+                    self.final_stats.correct,
+                    self.final_stats.incorrect,
+                    self.final_stats.extra,
+                    self.final_stats.missed
+                ),
+            ),
         ];
         let t = stats.map(|(name, value)| {
             ListItem::new({
-                let mut it = vec![Line::from(Span::styled(name.to_string(), Style::default().yellow()))];
+                let mut it = vec![Line::from(Span::styled(
+                    name.to_string(),
+                    Style::default().yellow(),
+                ))];
                 for row in value.split('\n') {
                     it.push(Line::from(Span::raw(row.to_string())))
                 }
@@ -135,7 +162,7 @@ impl StatsState {
             / 40
             + 1)
             * 40;
-        
+
         let last_time = self.test_duration.as_secs_f64();
 
         let chart = Chart::new(vec![
@@ -176,7 +203,6 @@ impl StatsState {
         f.render_widget(chart, area);
     }
 }
-
 
 impl State for StatsState {
     fn handle_event(self: Box<Self>, _event: event::KeyEvent, _app: &App) -> Box<dyn State> {
@@ -228,20 +254,18 @@ pub fn word_difference<'a>(
         })
 }
 
-fn calculate_accuracy(
-    key_strokes: &[(Duration, KeyStrokeKind)]
-) -> f64 {
+fn calculate_accuracy(key_strokes: &[(Duration, KeyStrokeKind)]) -> f64 {
     let mut correct = 0.0;
     let mut incorrect = 0.0;
     for (_, ks) in key_strokes.iter() {
         match ks {
-            KeyStrokeKind::Correct(_) => correct+=1.0,
-            KeyStrokeKind::Incorrect(_) => incorrect+=1.0,
-            KeyStrokeKind::Space(i) if i != &0 => incorrect+=1.0,
-            _ => ()
+            KeyStrokeKind::Correct(_) => correct += 1.0,
+            KeyStrokeKind::Incorrect(_) => incorrect += 1.0,
+            KeyStrokeKind::Space(i) if i != &0 => incorrect += 1.0,
+            _ => (),
         }
     }
-    correct/(correct+incorrect)
+    correct / (correct + incorrect)
 }
 
 //kinda breaks when the duration is 0 but that rarely (never) happens so its ok :)
@@ -338,73 +362,67 @@ mod tests {
                 12, /* 12 to make char amount match wpm due to how normalize_wpm() works : x/5 * (60/12) = x  */
             ),
         );
-        assert_eq!(stats, FinalStats {
-            wpm: 5.0, // 4 chars + 1 space
-            raw_wpm: 5.0,
-            correct: 4, 
-            extra: 0,
-            incorrect: 0,
-            missed: 0,
-        })
+        assert_eq!(
+            stats,
+            FinalStats {
+                wpm: 5.0, // 4 chars + 1 space
+                raw_wpm: 5.0,
+                correct: 4,
+                extra: 0,
+                incorrect: 0,
+                missed: 0,
+            }
+        )
     }
     #[test]
     fn final_stats_errors() {
         let input = ["bbc", "bda", "cdq", "a"].map(String::from);
         let correct = ["dac", "bb", "cd", "aaa"].map(String::from);
-        let stats = FinalStats::calculate(
-            &input,
-            &correct,
-            Duration::from_secs(
-                12,
-            ),
-        );
-        assert_eq!(stats, FinalStats {
-            wpm: 1.0, 
-            raw_wpm: 13.0,
-            correct: 5, 
-            extra: 2,
-            incorrect:3,
-            missed: 0,
-        })
+        let stats = FinalStats::calculate(&input, &correct, Duration::from_secs(12));
+        assert_eq!(
+            stats,
+            FinalStats {
+                wpm: 1.0,
+                raw_wpm: 13.0,
+                correct: 5,
+                extra: 2,
+                incorrect: 3,
+                missed: 0,
+            }
+        )
     }
     #[test]
     fn final_stats_missed() {
         let input = ["bb", "b", "ha", "b"].map(String::from);
         let correct = ["bbaa", "baaa", "haaa", "b"].map(String::from);
-        let stats = FinalStats::calculate(
-            &input,
-            &correct,
-            Duration::from_secs(
-                12, 
-            ),
-        );
-        assert_eq!(stats, FinalStats {
-            wpm: 2.0, 
-            raw_wpm: 10.0,
-            correct: 6, 
-            extra: 0,
-            incorrect:0,
-            missed: 7,
-        })
+        let stats = FinalStats::calculate(&input, &correct, Duration::from_secs(12));
+        assert_eq!(
+            stats,
+            FinalStats {
+                wpm: 2.0,
+                raw_wpm: 10.0,
+                correct: 6,
+                extra: 0,
+                incorrect: 0,
+                missed: 7,
+            }
+        )
     }
     #[test]
     fn final_stats_duration() {
         let input = ["aaaa", "aaaa", "aaaa", "aaaa"].map(String::from);
         let correct = ["aaaa", "aaaa", "aaaa", "aaaa"].map(String::from);
-        let stats = FinalStats::calculate(
-            &input,
-            &correct,
-            Duration::from_secs(
-                60, 
-            ),
-        );
-        assert_eq!(stats, FinalStats {
-            wpm: 20.0 / 5.0, // 4 chars + 1 space
-            raw_wpm: 20.0 / 5.0,
-            correct: 16, 
-            extra: 0,
-            incorrect:0,
-            missed: 0,
-        })
+        let stats = FinalStats::calculate(&input, &correct, Duration::from_secs(60));
+        assert_eq!(
+            stats,
+            FinalStats {
+                wpm: 20.0 / 5.0, // 4 chars + 1 space
+                raw_wpm: 20.0 / 5.0,
+                correct: 16,
+                extra: 0,
+                incorrect: 0,
+                missed: 0,
+            }
+        )
     }
 }

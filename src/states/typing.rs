@@ -131,6 +131,7 @@ impl State for TypingState {
                             dur,
                             &self.word_list,
                             &self.written_words,
+                            self.mode
                         ));
                     }
                 }
@@ -141,6 +142,7 @@ impl State for TypingState {
                             start_time.elapsed(),
                             &self.word_list,
                             &self.written_words,
+                            self.mode
                         ));
                     }
                 }
